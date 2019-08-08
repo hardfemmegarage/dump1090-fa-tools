@@ -34,9 +34,14 @@ dxthreshold = 100
 ## The Scripts
 
 ### overhead1090-fa
+
+![PFD style display of farthest aircraft[(https://github.com/hardfemmegarage/dump1090-fa-tools/blob/screenshots/dx1090-fa-PFD.png)
+
 Tells you the ICAO (hex) and flight number of the closest aircraft to your Site (lat/lon is user configurable). A delightfully crude ncurses PFD (primary flight display) metaphor is used to indicate other informations such as squawk, altitude, speed, heading, etc.
 
-Most interesting, the script calculates the compass bearing of the aircraft from your Site, so you know which direction to look for it.
+Most interestingly, the script calculates the compass bearing of the aircraft from your Site, so you know which direction to look for it.
+
+![PFD style display of farthest aircraft[(https://github.com/hardfemmegarage/dump1090-fa-tools/blob/screenshots/dx1090-fa-PFD.png)
 
 A second mode shows a list of the 20 aircraft nearest your site, sorted by distance from Site.
 A third "marquee" mode simply flashes the flight number in the center of the screen... so that you can set up a monitor in your back yard and see in only what is flight over you at the very moment.
