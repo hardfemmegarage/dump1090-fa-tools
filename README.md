@@ -52,6 +52,6 @@ Tells you the ICAO (hex) and flight number of the farthest aircraft to your Site
 Most interesting, the script calculates the compass bearing of the aircraft from your Site, so you know which direction to look for it.
 
 
-![PFD style display of farthest aircraft](https://github.com/hardfemmegarage/dump1090-fa-tools/blob/screenshots/dx1090-fa-PFD.png)
+![PFD style display of farthest aircraft](https://github.com/hardfemmegarage/dump1090-fa-tools/blob/screenshots/dx1090-fa-LIST.png)
 
 A second mode shows a list of the 20 aircraft farthest from your site, sorted by distance from Site. For distance, this is probably the most useful feature as you can see a list of distant contacts and enjoying "dx-ing" like that ham radio folk do.
