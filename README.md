@@ -40,6 +40,7 @@ A third "marquee" mode simply flashes the flight number in the center of the scr
 
 #### Help / Commands
 
+![Help Screen](https://github.com/hardfemmegarage/dump1090-fa-tools/blob/screenshots/overhead1090-fa-HELP.png)
 
 #### Configuration
 
@@ -100,6 +101,8 @@ Additionally, the script calculates the compass bearing of the aircraft from you
 A second mode shows a list of the 20 aircraft farthest from your site, sorted by distance from Site. For distance, this is probably the most useful feature as you can see a list of distant contacts and enjoying "dx-ing" like the ham radio folk do. Aging aircraft go dim before disappearing, like eaglets leaving the nest.
 
 #### Help / Commands
+
+![Help Screen](https://github.com/hardfemmegarage/dump1090-fa-tools/blob/screenshots/dx1090-fa-HELP.png)
 
 
 #### Configuration
