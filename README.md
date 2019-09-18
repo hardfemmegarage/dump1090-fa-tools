@@ -59,11 +59,9 @@ SiteLon= -122.3117778  #site longitude, decimal degrees
 # Location of aircraft.json file to be used
 #   local pathtojson is preferred, a URL can be used as a backup, if you must
 
-pathtojson = '/usr/local/www/hardfemmegarage.org/airtrac/sites/dradis-sea01/data/aircraft.json'
-#pathtojson = '/run/dump1090-fa/aircraft.json'
+pathtojson = '/run/dump1090-fa/aircraft.json'
 
 urltojson = 'http://be.nice.com/do/not/steal/without/asking/other/peoples/aircraft.json'
-#urltojson = 'http://www.hardfemmegarage.org/airtrac/sites/dradis-sea01/data/aircraft.json'
 
 # Initial ncurse screen to show. opts: pfd, marquee, list, config
 
