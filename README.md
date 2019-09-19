@@ -14,7 +14,9 @@ The scripts do *not* have to reside on the same machine that dump1090 is running
 
 Alternatively, if you have a URL to an aircraft.json file, it will work -- though for some reason that seems messy.
 
-### fond optimized ncurse display (FOND)
+### fully optimized ncurses display (FOND)
+
+Aviation loves it acronyms; so why not contribute?
 
 Ncurses scripts are optimized for 80x25 terminal display because there is no need for anything bigger. That said, have at it to hack away for larger terminal windows if you'd like.
 
