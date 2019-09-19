@@ -151,12 +151,19 @@ verbose = 1
 
 ## Forthcoming Scripts
 
+### watchlist1090-fa
+
+
+Monitors the aircraft.json file for specific ICAO or Flight numbers 
+
+
 ### watcharea1090-fa
 
 
 Monitors the aircraft.json file for flights over a specified area (in a specified volume or 3D airspace, really). Displays individual aircraft with positions in a square defined by lowlat, lowlon to hilat, hilon and below ceiling and above floor.
 
 Outputs to screen
+
 
 ### trackrecorder1090-fa
 

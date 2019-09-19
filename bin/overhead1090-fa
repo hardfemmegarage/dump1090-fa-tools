@@ -1,0 +1,564 @@
+#!/usr/bin/python -O
+# -------------------------------------------------------------------
+# Script checks the aircraft.json file to find the closest aircraft
+# to the Receiver Site Location (lat/lon set below) and display the
+# trend live. Refreshes every 2 seconds.
+#
+# Version 1.0
+#
+# Prequisites: Dump1090-fa (FlightAware version) running, since it
+#              checks the aircraft.json file that uses the FA names
+#
+# Credits: based on https://github.com/keptenkurk/Check_flights
+#          Heavily adapted beyond recognition
+#-------------------------------------------------------------------- 
+
+# Receiver Site Location
+
+# Stock (KSEA)
+SiteLat= 47.449888     #site latitude, decimal degrees
+SiteLon= -122.3117778  #site longitude, decimal degrees
+
+# Location of aircraft.json file to be used
+#   local pathtojson is preferred, a URL can be used as a backup, if you must
+
+pathtojson = '/run/dump1090-fa/aircraft.json'
+
+urltojson = 'http://be.nice.com/do/not/steal/without/asking/other/peoples/aircraft.json'
+
+# Initial ncurse screen to show. opts: pfd, marquee, list, config
+
+display="pfd"
+
+# Time To Sleep... between refresh
+
+tts=1
+
+# Distance limit. We are not interested in aircraft beyond this distance from Site
+
+dxlimit = 50
+
+# stale report threshold
+
+staleAge = 20
+
+# some verbose shit
+
+verbose = 1
+
+
+#-------------------------------------------------------------------- 
+#
+# Get on with it, then!
+#
+
+##############################################################################
+# 
+# No user-serviceable parts below
+#
+    
+import os, json, math, time
+
+from geopy.distance import vincenty
+     # example
+     # newport_ri = (41.49008, -71.312796)
+     # cleveland_oh = (41.499498, -81.695391)
+     # print(vincenty(newport_ri, cleveland_oh).miles)
+
+# Verify json source exists, fall back on http
+
+try:
+   pathtojson
+except NameError:
+   if ( verbose ):
+      print ("Local source not defined.\n")
+   json_source="http"
+else:
+   if os.path.exists(pathtojson):
+      if ( verbose ):
+         print ("Scanning source: " + pathtojson + "\n")
+      json_source="file"
+   else:
+      if ( verbose ):
+         print ("Local source not found: " + pathtojson + "\n")
+      json_source="null"
+    
+
+if not json_source == "file":
+   try:
+      urltojson
+   except NameError:
+      if ( verbose ):
+         print ("URL to source not defined\n")
+      json_source="null"
+   else:
+      if ( verbose ):
+         print ("Verifying " + urltojson + "\n")
+      from contextlib import closing
+      from urllib2 import urlopen
+      import urlparse
+      try:
+         urlopen(urltojson)
+      except URLError as e:
+         if ( verbose ):
+            print e
+         json_source="null"
+      else:
+         if ( verbose ):
+            print ("Scanning source: " + urltojson + "\n")
+         json_source="http"
+
+
+
+# CURSES!!
+
+import curses
+import datetime
+
+stdscr = curses.initscr()
+curses.noecho()
+stdscr.nodelay(1) # set getch() non-blocking
+#stdscr.keypad(1)
+curses.curs_set(0)   # cursor visibility (0=invisible, 1=vis, 2=very vis
+
+
+
+# Init vars 
+
+SiteCoords = (SiteLat, SiteLon)
+
+aircraft_seen = {}
+dx_aircraft = {}
+closest_aircraft = {}
+
+last_distance=500000   # initial last distance for compare, something absurd
+last_altitude=500000   # initial last altitude for compare, something absurd
+
+maxrows=22   # max rows in list view
+
+# Some Functions
+
+#Horizontal Bearing
+
+from math import *   # this seems imported above
+
+def calcBearing(lat1, lon1, lat2, lon2):
+    deltaX = lon2 - lon1
+    deltaY = lat2 - lat1 
+    degrees_temp = math.atan2(deltaX, deltaY)/math.pi*180
+    if degrees_temp < 0:
+        degrees_final = 360 + degrees_temp
+    else:
+        degrees_final = degrees_temp
+    return int(degrees_final)
+
+def drawMainScreen():
+
+    # draw the border
+
+    stdscr.clear()
+    #stdscr.erase()
+
+    # draw boxes
+    boxMain = stdscr.subwin(24, 80, 0, 0)
+    boxMain.box()
+    boxMain.border(0)
+
+
+def drawPFD():
+
+    # draw the Primary Flight Display in ncurses
+
+    # draw boxen
+
+    boxHexNum = stdscr.subwin(1,10,3,5)
+    boxFlightNum = stdscr.subwin(1,10,3,65)
+    boxBearing = stdscr.subwin(3,15,5,32)
+    boxHeading = stdscr.subwin(5,9,18,35)
+    boxHeadingStrip = stdscr.subwin(3,40,19,20)
+    boxMessagesNum = stdscr.subwin(1,10,21,5)
+    boxAge = stdscr.subwin(1,10,21,65)
+    boxSpeedStrip = stdscr.subwin(12,7,6,11)
+    boxSpeedIndicator = stdscr.subwin(4,13,10,8)
+    boxAltitudeStrip = stdscr.subwin(12,7,6,62)
+    boxAltitudeIndicator = stdscr.subwin(4,14,10,58)
+    boxFlightNum.box()
+    boxFlightNum.border()
+    boxHeadingStrip.box()
+    boxHeadingStrip.border()
+    boxHeading.erase()
+    boxHeading.box()
+    boxHeading.border()
+    boxBearing.box()
+    boxBearing.border()
+    boxHexNum.box()
+    boxHexNum.border()
+    boxMessagesNum.box()
+    boxMessagesNum.border()
+    boxAge.box()
+    boxAge.border()
+    boxSpeedStrip.box()
+    boxSpeedStrip.border()
+    boxSpeedIndicator.box()
+    boxSpeedIndicator.erase()
+    boxSpeedIndicator.border()
+    boxAltitudeStrip.box()
+    boxAltitudeStrip.border()
+    boxAltitudeIndicator.box()
+    boxAltitudeIndicator.erase()
+    boxAltitudeIndicator.border()
+
+    # add legends
+
+    stdscr.addstr(0,2,"Nearest Aircraft")
+    stdscr.addstr(4,65,"sqk:")
+    stdscr.addstr(7,14,"-",curses.A_DIM)
+    stdscr.addstr(9,14,"-",curses.A_DIM)
+    stdscr.addstr(14,14,"-",curses.A_DIM)
+    stdscr.addstr(16,14,"-",curses.A_DIM)
+    stdscr.addstr(12,12,"knots")
+    stdscr.addstr(4,38,"BRG")
+    stdscr.addstr(10,37,"RANGE")
+    stdscr.addstr(18,38,"HDG")
+    stdscr.addstr(20,67,"age:")
+
+    stdscr.refresh
+
+def drawList():
+
+    stdscr.addstr(1,1,'ICAO  ',curses.A_UNDERLINE)
+    stdscr.addstr(1,8,'FLIGHT',curses.A_UNDERLINE)
+    stdscr.addstr(1,16,'DIST  ',curses.A_STANDOUT)
+    stdscr.addstr(1,25,'BRG',curses.A_REVERSE)
+    stdscr.addstr(1,30,'HDG',curses.A_REVERSE)
+    stdscr.addstr(1,40,'ALT  ',curses.A_UNDERLINE)
+    stdscr.addstr(1,50,'SPD  ',curses.A_UNDERLINE)
+    stdscr.addstr(1,65,'MSGS',curses.A_UNDERLINE)
+    stdscr.addstr(1,75,'AGE',curses.A_UNDERLINE)
+
+
+def helpScreen():
+
+    stdscr.addstr(2,2,"Help")
+
+    stdscr.addstr(4,3,'(c)onfig  -- some configuration info')
+    stdscr.addstr(5,3,'(l)ist    -- list of flights, nearest to farthest')
+    stdscr.addstr(6,3,'(m)arquee -- shows the flight number and age of signal')
+    stdscr.addstr(7,3,'(p)fd     -- shows all sorts of info like a curses PFD')
+    stdscr.addstr(8,3,'(q)uit    -- exit gracefully')
+
+# Do the job until forever
+
+while True:
+
+    # set initial distance to something impossible, so that each pass will find the closest plane
+    comp_distance=5000
+    altitude_trend="---"
+    distance_trend=" ----   ---- "
+
+    # clear out the array of near aircraft
+
+    dx_aircraft.clear()
+
+
+    # read_aircraft from Dump1090 to aircraft dictionary
+
+    if json_source=="file":
+
+       with open(pathtojson) as aircraft_file:
+          aircraft_data = json.load(aircraft_file)
+
+    elif json_source=="http":
+
+       with closing(urlopen(urltojson, None, 5.0)) as aircraft_file:
+           aircraft_data = json.load(aircraft_file)
+
+    else:
+       print ("No valid aircraft.json source found. Good bye.\n")
+       break
+
+
+    # ITERATOR starts here
+
+    # record new planes and reset age for those still within range
+
+    for a in aircraft_data['aircraft']:
+        # check if the record has a position
+        if a.has_key('seen_pos'):
+
+            # ALITITUDE check for geometric altitude
+
+            if a.has_key('alt_geom'):
+               altitude=a['alt_geom']
+            else:
+               altitude="---"
+
+            if a.has_key('alt_baro'):
+               altitude_baro=a['alt_baro']
+            else:
+               altitude_baro="---"
+
+            # we live near an airport, ignore aircraft on ground or, oddly, underground
+
+            if altitude=="ground" or altitude < 0 or altitude_baro=="ground":
+               continue
+
+
+            # check for Flight Number
+            if a.has_key('flight'):
+               flight=a['flight']
+            else:
+               flight="-----"
+
+            # check for Squawk
+            if a.has_key('squawk'):
+               squawk=a['squawk']
+            else:
+               squawk="-----"
+
+            # check heading
+            if a.has_key('track'):
+               heading=a['track']
+            else:
+               heading="000"
+
+            # check speed
+            if a.has_key('gs'):
+               groundspeed=a['gs']
+            else:
+               groundspeed="000"
+
+            # get Age of message
+            if a.has_key('seen'):
+               age=a['seen']
+            else:
+               age="---"
+
+            # get number of messages
+            if a.has_key('messages'):
+               messages=a['messages']
+            else:
+               messages="---"
+
+            # calculate aircraft bearing from Site
+
+            bearing = calcBearing(SiteLat, SiteLon, a['lat'], a['lon'])
+
+            # calculate range/distance from Site
+
+            PlaneCoords=(a['lat'], a['lon'])
+
+            distance = vincenty(SiteCoords, PlaneCoords).nm
+
+            # assemble list of nearby AND approaching aircraft
+
+            if distance < dxlimit:
+
+               dx_aircraft[a['hex']] = {
+                    'squawk':squawk,
+                    'flight':flight,
+                    'groundspeed':groundspeed,
+                    'altitude':altitude,
+                    'distance':round(distance,2),
+                    'heading':heading,
+                    'bearing':bearing,
+                    'age':age,
+                    'messages':messages
+                    }
+
+            # find closest airplane then
+
+            if distance < comp_distance:
+               comp_distance=distance
+               closest_aircraft['icao']=a['hex']
+               closest_aircraft['flight']=flight
+               closest_aircraft['squawk']=squawk
+               closest_aircraft['groundspeed']=groundspeed
+               closest_aircraft['altitude']=altitude
+               closest_aircraft['distance']=round(distance,2)
+               closest_aircraft['heading']=heading
+               closest_aircraft['bearing']=bearing
+               closest_aircraft['age']=age
+               closest_aircraft['messages']=messages
+
+            # end finding Closest Aircraft
+
+    # find Altitude Trend for Closest Aircraft
+
+    if closest_aircraft['altitude'] == "---":
+       pass
+    elif closest_aircraft['altitude'] < last_altitude:
+       altitude_trend="vvvvv"
+    elif closest_aircraft['altitude'] > last_altitude:
+       altitude_trend="^^^^^"
+    elif closest_aircraft['altitude'] == last_altitude:
+       altitude_trend="-----"
+    else:
+       altitude_trend=" --- "
+
+    last_altitude=closest_aircraft['altitude']
+
+
+    # find Range Trend for Closest Aircraft
+
+    if closest_aircraft['distance'] < last_distance:
+       distance_trend="-----> <-----"
+    elif closest_aircraft['distance'] > last_distance:
+       distance_trend="<----- ----->"
+               
+    last_distance=closest_aircraft['distance']
+
+
+
+    # Print the closest aircraft
+
+    if display == "text":
+
+       os.system('clear')
+
+       print (closest_aircraft['icao'],"     ", closest_aircraft['flight'])
+       print ("hdg: ",str(closest_aircraft['heading']))
+       print (str(closest_aircraft['altitude']), " ft")
+       print (altitude_trend)
+       print (str(closest_aircraft['distance']), " nm")
+       print (distance_trend)
+       print ("brg: ",str(closest_aircraft['bearing']))
+
+
+    if display == "help":
+
+       drawMainScreen()
+       helpScreen()
+
+
+    if display == "list":
+
+       drawMainScreen()
+       drawList()
+
+       rownum=2
+
+       #for icao,particulars in dx_aircraft.items():
+       for icao,particulars in sorted(dx_aircraft.items(), key=lambda item: item[1]['distance'], reverse=False):
+
+          rownum+=1
+
+          if rownum > maxrows:
+             break
+
+          # dim the aircraft if we have not seen it for a bit
+
+          if int(particulars['age']) > staleAge:
+             textFestoon = curses.A_DIM
+          else:
+             textFestoon = curses.A_NORMAL
+
+          stdscr.addstr(rownum,1,str(icao),textFestoon)
+          stdscr.addstr(rownum,8,str(particulars['flight']),textFestoon)
+          stdscr.addstr(rownum,16,str(particulars['distance']),textFestoon)
+          stdscr.addstr(rownum,25,str(particulars['bearing']),textFestoon)
+          stdscr.addstr(rownum,30,str(int(particulars['heading'])),textFestoon)
+          stdscr.addstr(rownum,40,str(particulars['altitude']),textFestoon)
+          stdscr.addstr(rownum,50,str(particulars['groundspeed']),textFestoon)
+          stdscr.addstr(rownum,65,str(particulars['messages']),textFestoon)
+          stdscr.addstr(rownum,75,str(int(particulars['age'])),textFestoon)
+
+
+
+
+
+    if display == "pfd":
+
+       drawMainScreen()
+       drawPFD()
+   
+       stdscr.addstr(2,7,str(closest_aircraft['icao']))
+       stdscr.addstr(2,67,str(closest_aircraft['flight']))
+       stdscr.addstr(4,70,str(closest_aircraft['squawk']))
+       stdscr.addstr(8,13,str(int(closest_aircraft['groundspeed'])+10),curses.A_DIM)
+       stdscr.addstr(11,12,str(closest_aircraft['groundspeed']))
+       stdscr.addstr(15,13,str(int(closest_aircraft['groundspeed'])-10),curses.A_DIM)
+       stdscr.addstr(11,63,str(closest_aircraft['altitude']))
+       stdscr.addstr(12,63,altitude_trend)
+       stdscr.addstr(6,38,str(closest_aircraft['bearing']))
+       stdscr.addstr(12,37,str(closest_aircraft['distance']))
+       stdscr.addstr(14,33,distance_trend)
+       stdscr.addstr(20,38,str(int(closest_aircraft['heading'])))
+       stdscr.addstr(20,8,str(int(closest_aircraft['messages'])))
+       stdscr.addstr(20,72,str(int(closest_aircraft['age'])))
+       stdscr.refresh
+
+    if display == "marquee":
+
+       drawMainScreen()
+
+       stdscr.addstr(0,2,"Overhead")
+       stdscr.addstr(10,37,str(closest_aircraft['flight']))
+       stdscr.addstr(20,8,str(int(closest_aircraft['messages'])))
+       stdscr.addstr(20,72,str(int(closest_aircraft['age'])))
+
+    if display == "config":
+
+
+       drawMainScreen()
+
+       stdscr.addstr(0,2,"Config")
+       stdscr.addstr(3,3,"Site Lat: "+str(SiteLat))
+       stdscr.addstr(4,3,"Site Lon: "+str(SiteLon))
+
+       stdscr.addstr(3,60,"Refresh: ")
+       stdscr.addstr(3,72,str(tts))
+       stdscr.addstr(4,60,"Stale Age: ")
+       stdscr.addstr(4,72,str(staleAge))
+
+       stdscr.addstr(6,3,"JSON Active source:")
+       stdscr.addstr(6,24,json_source)
+
+       if json_source == "file": stdscr.addstr(7,3,pathtojson)
+       if json_source == "http": stdscr.addstr(7,3,urltojson)
+
+       stdscr.addstr(9,3,"JSON Configured Path source:")
+       try:
+          pathtojson
+       except NameError:
+          stdscr.addstr(10,3,"n/a")
+       else:
+          stdscr.addstr(10,3,pathtojson)
+
+
+       stdscr.addstr(12,3,"JSON Configured URL source:")
+       try:
+          urltojson
+       except NameError:
+          stdscr.addstr(13,3,"n/a")
+       else:
+          stdscr.addstr(13,3,urltojson)
+
+
+
+    c = stdscr.getch()
+
+    if c == ord('q'): break
+    elif c == ord('c'):
+       display = "config"
+    elif c == ord('l'):
+       display = "list"
+    elif c == ord('m'):
+       display = "marquee"
+    elif c == ord('p'):
+       display = "pfd"
+    elif c == ord('t'):
+       display = "text"
+    elif c == ord('h'):
+       display = "help"
+
+    # Sleep
+
+    time.sleep(tts)
+
+
+curses.nocbreak()
+curses.echo()
+curses.endwin()
+
+
